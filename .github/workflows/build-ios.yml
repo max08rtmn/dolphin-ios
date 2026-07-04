@@ -25,26 +25,22 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Prepare full source tree
+      - name: Prepare source tree
         run: |
           set -euo pipefail
-
           source_root="$GITHUB_WORKSPACE"
           if [ -f "$SOURCE_ZIP" ] && [ ! -d "Source/iOS/App/DolphiniOS.xcodeproj" ]; then
             rm -rf _source
             mkdir -p _source
             unzip -q "$SOURCE_ZIP" -d _source
-
             project_path="$(find _source -path '*/Source/iOS/App/DolphiniOS.xcodeproj' -type d -print -quit)"
             if [ -z "$project_path" ]; then
               echo "DolphiniOS.xcodeproj wurde in $SOURCE_ZIP nicht gefunden." >&2
               find _source -maxdepth 5 -type d | sort
               exit 66
             fi
-
             source_root="$(cd "$(dirname "$project_path")/../../.." && pwd)"
           fi
-
           if [ -f "$GITHUB_WORKSPACE/MFiController.mm" ]; then
             target="$source_root/Source/Core/InputCommon/ControllerInterface/iOS/MFiController.mm"
             if [ ! -f "$target" ]; then
@@ -52,36 +48,31 @@ jobs:
               exit 66
             fi
             cp "$GITHUB_WORKSPACE/MFiController.mm" "$target"
-            echo "MFiController.mm wurde in den vollstaendigen DolphiniOS-Quellcode kopiert."
+            echo "MFiController.mm wurde in den DolphiniOS-Quellcode kopiert."
           fi
-
           echo "SOURCE_ROOT=$source_root" >> "$GITHUB_ENV"
           echo "XCODE_PROJECT=$source_root/Source/iOS/App/DolphiniOS.xcodeproj" >> "$GITHUB_ENV"
           echo "DERIVED_DATA_PATH=$source_root/build-Xcode" >> "$GITHUB_ENV"
           echo "ARCHIVES_DIR=$source_root/archives" >> "$GITHUB_ENV"
           echo "PRODUCTS_DIR=$source_root/products" >> "$GITHUB_ENV"
-
       - name: Select Xcode
         run: |
           set -euo pipefail
           selected_xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' -print | sort -V | tail -n 1)"
           sudo xcode-select -s "$selected_xcode/Contents/Developer"
           xcodebuild -version
-
       - name: Install build utilities
         run: |
           set -euo pipefail
           brew install cmake ninja bartycrouch
           chmod +x "$SOURCE_ROOT/Source/iOS/App/Project/Scripts/"*.sh
           PROJECT_DIR="$SOURCE_ROOT/Source/iOS/App" "$SOURCE_ROOT/Source/iOS/App/Project/Scripts/SetUpPython.sh"
-
       - name: Build applications
         run: |
           set -euo pipefail
           cd "$SOURCE_ROOT"
           rm -rf "$ARCHIVES_DIR" "$DERIVED_DATA_PATH"
           mkdir -p "$ARCHIVES_DIR"
-
           xcodebuild archive \
             -archivePath "$ARCHIVES_DIR/NonJailbroken.xcarchive" \
             -configuration "$XCODE_CONFIGURATION_NJB" \
@@ -89,7 +80,6 @@ jobs:
             -project "$XCODE_PROJECT" \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             $XCODE_COMMON_BUILD_ARGS
-
           xcodebuild archive \
             -archivePath "$ARCHIVES_DIR/TrollStore.xcarchive" \
             -configuration "$XCODE_CONFIGURATION_TS" \
@@ -97,13 +87,11 @@ jobs:
             -project "$XCODE_PROJECT" \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             $XCODE_COMMON_BUILD_ARGS
-
       - name: Package unsigned IPA files
         run: |
           set -euo pipefail
           rm -rf "$PRODUCTS_DIR"
           mkdir -p "$PRODUCTS_DIR"
-
           package_app() {
             app_path="$1"
             output_path="$2"
@@ -111,17 +99,14 @@ jobs:
               echo "App wurde nicht gefunden: $app_path" >&2
               exit 66
             fi
-
             work_dir="$(mktemp -d)"
             mkdir -p "$work_dir/Payload"
             ditto "$app_path" "$work_dir/Payload/DolphiniOS.app"
             (cd "$work_dir" && zip -qry "$output_path" Payload)
             rm -rf "$work_dir"
           }
-
           package_app "$ARCHIVES_DIR/NonJailbroken.xcarchive/Products/Applications/DolphiniOS.app" "$PRODUCTS_DIR/Non-Jailbroken-unsigned.ipa"
           package_app "$ARCHIVES_DIR/TrollStore.xcarchive/Products/Applications/DolphiniOS.app" "$PRODUCTS_DIR/TrollStore-unsigned.tipa"
-
       - name: Upload products
         uses: actions/upload-artifact@v4
         with:
